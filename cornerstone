@@ -1,0 +1,78 @@
+import numpy as np
+import pandas as pd
+import mne
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.utils import to_categorical
+
+def preprocess_eeg_data(file_paths, labels, sampling_rate=128):
+    """
+    Preprocess EEG data files.
+
+    Parameters:
+    - file_paths: list of EEG file paths
+    - labels: list of labels corresponding to the files
+    - sampling_rate: sampling rate to resample the data
+
+    Returns:
+    - features: numpy array of processed EEG features
+    - labels: numpy array of labels
+    """
+    features = []
+    for i, file_path in enumerate(file_paths):
+        try:
+            raw = mne.io.read_raw_edf(file_path, preload=True)
+            raw.resample(sampling_rate)  # Downsample data
+            data = raw.get_data()  # Get EEG channel data
+            features.append(data.mean(axis=1))  # Example feature: mean signal per channel
+        except Exception as e:
+            print(f"Error processing {file_path}: {e}")
+    return np.array(features), np.array(labels)
+
+def build_nn_model(input_shape):
+    """
+    Build a simple neural network model for classification.
+
+    Parameters:
+    - input_shape: shape of input features
+
+    Returns:
+    - model: compiled Keras model
+    """
+    model = Sequential([
+        Dense(128, activation='relu', input_shape=(input_shape,)),
+        Dropout(0.3),
+        Dense(64, activation='relu'),
+        Dropout(0.3),
+        Dense(2, activation='softmax')  # Assuming binary classification
+    ])
+
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+# Example usage:
+# Assume you have EEG files and their labels (0 for control, 1 for schizophrenia)
+eeg_file_paths = ["path/to/eeg1.edf", "path/to/eeg2.edf"]  # Add your EEG file paths
+labels = [0, 1]  # Corresponding labels
+
+# Preprocess data
+features, labels = preprocess_eeg_data(eeg_file_paths, labels)
+labels = to_categorical(labels)  # One-hot encode labels
+
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(features, labels, test_size=0.2, random_state=42)
+
+# Train a neural network
+model = build_nn_model(X_train.shape[1])
+model.fit(X_train, y_train, epochs=50, batch_size=16, validation_split=0.2)
+
+# Evaluate
+predictions = model.predict(X_test)
+predicted_classes = np.argmax(predictions, axis=1)
+true_classes = np.argmax(y_test, axis=1)
+
+print("Accuracy:", accuracy_score(true_classes, predicted_classes))
+print("Classification Report:\n", classification_report(true_classes, predicted_classes))
